@@ -1,0 +1,74 @@
+# ------------------------------------------------------------------
+# Pricing assumptions
+# ILLUSTRATIVE VALUES ONLY 
+# ------------------------------------------------------------------
+
+# Bank's funding cost over Treasuries (added to every point on the curve)
+funding_spread_bps: 25
+
+# Liquidity premium charged to loans, by term in years (interpolated linearly,
+# flat beyond the ends). 
+liquidity_premium_bps:
+  0.25: 5
+  1: 15
+  3: 35
+  5: 50
+  7: 60
+  10: 70
+
+# Prepayment option cost (fixed-rate loans with NO prepayment penalty only).
+# Borrowers prepay at an annual CPR, collateral dependent.
+#Rates are assumed to move randomly with this annual volatility.
+cpr_by_collateral:
+  cash: 0.05
+  real_estate: 0.08
+  equipment: 0.15
+  receivables_inventory: 0.20
+  unsecured: 0.20
+rate_volatility_bps: 100
+
+# Operating expense, as an annual rate on balance
+loan_opex_bps: 50
+deposit_opex_bps: 25
+
+# Capital and return targets
+tax_rate: 0.25
+hurdle_roe: 0.12        # after-tax return the bank requires on equity
+capital_ratio: 0.10     # equity held per $1 of risk-weighted assets
+
+# Risk weight by loan type 
+risk_weights:
+  CI: 1.0
+  CRE: 1.0
+  Construction: 1.5
+
+# One-year probability of default by internal risk grade (1 = best, 8 = worst)
+pd_by_risk_grade:
+  1: 0.0003
+  2: 0.0005
+  3: 0.0010
+  4: 0.0025
+  5: 0.0050
+  6: 0.0100
+  7: 0.0300
+  8: 0.1000
+
+# Loss given default by collateral type
+lgd_by_collateral:
+  cash: 0.05
+  real_estate: 0.30
+  equipment: 0.40
+  receivables_inventory: 0.45
+  unsecured: 0.60
+
+# Non-maturity deposits are split into a stable core and a volatile part.
+# The stable share is credited at the funding curve rate for its assumed life;
+# the volatile share is credited at the short end (volatile_life_years).
+# CDs are 100% credited at their remaining term.
+deposit_behavior:
+  dda:                {stable_share: 0.80, stable_life_years: 5}
+  interest_checking:  {stable_share: 0.70, stable_life_years: 3}
+  savings:            {stable_share: 0.70, stable_life_years: 3}
+  high_yield_savings: {stable_share: 0.40, stable_life_years: 1}
+  mmda:               {stable_share: 0.50, stable_life_years: 2}
+volatile_life_years: 0.0833   # 1 month

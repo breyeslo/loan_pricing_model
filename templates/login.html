@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Log in - Loan Pricing Model</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+</head>
+<body>
+<main class="login">
+  <h1>Commercial Loan Pricing Model</h1>
+
+  {% if error %}
+  <div class="errors" role="alert">{{ error }}</div>
+  {% endif %}
+
+  <form class="card" action="/login" method="post">
+    <h2>Log in</h2>
+    <label>Password
+      <input type="password" name="password" autocomplete="current-password" required autofocus>
+    </label>
+    <button type="submit">Log in</button>
+  </form>
+</main>
+</body>
+</html>

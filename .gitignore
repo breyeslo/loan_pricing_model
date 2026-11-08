@@ -1,0 +1,9 @@
+.env
+# Never commit client workbooks; only the two synthetic ones belong in the repo
+*.xlsx
+!static/template.xlsx
+!static/sample_client.xlsx
+cache/
+__pycache__/
+.venv/
+.pytest_cache/

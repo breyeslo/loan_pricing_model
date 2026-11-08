@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Loan Pricing Model</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+</head>
+<body>
+<main>
+  {% include "_logout.html" %}
+  <h1>Commercial Loan Pricing Model</h1>
+  <p class="intro">
+    Prices a new commercial loan from today's Treasury curve, SOFR and Prime (from FRED),
+    funds transfer pricing (FTP), credit and capital assumptions, and then again in
+    the context of the borrower's existing loans, deposits and fees with the bank.
+  </p>
+  <p class="disclaimer">Illustrative model with synthetic data and assumptions. Not any bank's actual methodology.</p>
+
+  {% if errors %}
+  <div class="errors" role="alert">
+    <strong>Please fix the following before pricing:</strong>
+    <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  <form action="/price" method="post" enctype="multipart/form-data" autocomplete="off">
+    <section class="card">
+      <h2>1. Existing relationship</h2>
+      <p>
+        Download the <a href="{{ url_for('static', path='template.xlsx') }}">blank template</a>
+        or the <a href="{{ url_for('static', path='sample_client.xlsx') }}">sample client</a>.
+        Sheets: Loans, Deposits, Fees. Rates in percent (6.25 = 6.25%). Any sheet may be empty.
+      </p>
+      <label class="check">
+        <input type="checkbox" name="use_sample" {% if use_sample %}checked{% endif %}>
+        Use sample client: {{ sample_name }} <span class="hint">(ignores any uploaded file)</span>
+      </label>
+      <label>Or upload a client workbook (.xlsx, max 2 MB)
+        <input type="file" name="client_file" accept=".xlsx">
+      </label>
+      <p class="hint">Leave both empty to price for a brand-new client.</p>
+    </section>
+
+    <section class="card">
+      <h2>2. Proposed deal</h2>
+      <div class="grid">
+        <label>Loan type
+          <select name="loan_type">
+            {% for v in choices.loan_type %}<option {% if form.loan_type == v|string %}selected{% endif %}>{{ v }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Amount ($)
+          <input name="amount" value="{{ form.amount }}" inputmode="decimal" required>
+        </label>
+        <label>Term (months)
+          <input name="term_months" value="{{ form.term_months }}" inputmode="numeric" required>
+        </label>
+        <label>Rate type
+          <select name="rate_type">
+            {% for v in choices.rate_type %}<option {% if form.rate_type == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Fixed rate (%) <span class="hint">if fixed</span>
+          <input name="fixed_rate" value="{{ form.fixed_rate }}" inputmode="decimal">
+        </label>
+        <label>Rate index <span class="hint">if floating</span>
+          <select name="rate_index">
+            {% for v in choices.rate_index %}<option {% if form.rate_index == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Margin over index (%) <span class="hint">if floating, can be negative</span>
+          <input name="float_margin" value="{{ form.float_margin }}" inputmode="decimal">
+        </label>
+        <label>Rate floor (%) <span class="hint">if floating, blank for none</span>
+          <input name="rate_floor" value="{{ form.rate_floor }}" inputmode="decimal">
+        </label>
+        <label>Amortization
+          <select name="amortization">
+            {% for v in choices.amortization %}<option {% if form.amortization == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Amortization (months) <span class="hint">if level_payment</span>
+          <input name="amortization_months" value="{{ form.amortization_months }}" inputmode="numeric">
+        </label>
+        <label>Risk grade (1 best, 8 worst)
+          <select name="risk_grade">
+            {% for v in choices.risk_grade %}<option {% if form.risk_grade == v|string %}selected{% endif %}>{{ v }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Collateral
+          <select name="collateral_type">
+            {% for v in choices.collateral_type %}<option {% if form.collateral_type == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Prepayment penalty
+          <select name="prepay_penalty">
+            {% for v in choices.prepay_penalty %}<option {% if form.prepay_penalty == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Upfront fee ($)
+          <input name="upfront_fee" value="{{ form.upfront_fee }}" inputmode="decimal">
+        </label>
+      </div>
+    </section>
+
+    <button type="submit">Price this deal</button>
+  </form>
+</main>
+</body>
+</html>

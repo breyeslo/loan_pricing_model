@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pricing Results</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+  <script src="{{ url_for('static', path='vendor/chart.umd.min.js') }}"></script>
+</head>
+<body>
+<main>
+  {% include "_logout.html" %}
+  {% set d = r.deal %}
+  <p class="no-print"><a href="/">&larr; Price another deal</a></p>
+  <h1>Pricing results</h1>
+  <p class="subtitle">
+    {{ client_name }} &middot; {{ d.balance|money }} {{ d.loan_type }},
+    {{ d.term_months }} months, {{ d.rate_type }}{% if d.rate_type == 'floating' %} ({{ d.rate_index }}{% if d.rate_floor %}, {{ d.rate_floor|pct }} floor{% endif %}){% endif %}, {{ d.amortization }}{% if d.amortization == 'level_payment' %} ({{ d.amortization_months }} mo){% endif %},
+    risk grade {{ d.risk_grade }}, {{ d.collateral_type }}, prepay penalty {{ 'Y' if d.prepay_penalty else 'N' }},
+    upfront fee {{ d.upfront_fee|money }}
+  </p>
+  <p class="disclaimer">Illustrative model with synthetic data and assumptions. Not any bank's actual methodology.</p>
+
+  {% for w in warnings %}<div class="warning" role="status">{{ w }}</div>{% endfor %}
+
+  {# ---------- Headline boxes ---------- #}
+  <section class="tiles">
+    <div class="tile">
+      <div class="tile-label">Offered rate</div>
+      <div class="tile-value">{{ r.offered_rate|pct }}</div>
+      {% if d.rate_type == 'floating' %}<div class="tile-note">{% if d.rate_floor > d.index_rate + d.float_margin %}At floor: {% endif %}{{ d.rate_index }} {{ d.index_rate|pct }} {{ d.float_margin|spread }}</div>{% endif %}
+    </div>
+    <div class="tile">
+      <div class="tile-label">Standalone required rate</div>
+      <div class="tile-value">{{ r.standalone_rate|pct }}</div>
+      {% if d.rate_type == 'floating' %}<div class="tile-note">{{ d.rate_index }} {{ (r.standalone_rate - d.index_rate)|spread }}</div>{% endif %}
+    </div>
+    <div class="tile">
+      <div class="tile-label">Relationship-adjusted required rate</div>
+      <div class="tile-value">{{ r.relationship_rate|pct }}</div>
+      {% if d.rate_type == 'floating' %}<div class="tile-note">{{ d.rate_index }} {{ (r.relationship_rate - d.index_rate)|spread }}</div>{% endif %}
+    </div>
+    <div class="tile">
+      <div class="tile-label">Spread to FTP</div>
+      <div class="tile-value">{{ r.spread_to_ftp|bp }} bp</div>
+      <div class="tile-note">Offered rate &minus; FTP base {{ r.components.ftp|pct }}</div>
+    </div>
+    {% for label, value in [('Standalone ROE', r.standalone_roe), ('Relationship ROE', r.relationship_roe)] %}
+    {% set ok = value >= r.hurdle - 1e-9 %}
+    <div class="tile {{ 'good' if ok else 'bad' }}">
+      <div class="tile-label">{{ label }}</div>
+      <div class="tile-value">{{ value|pct }}</div>
+      <div class="tile-note">{% if ok %}&#10003; At or above{% else %}&#10007; Below{% endif %} {{ r.hurdle|pct }} hurdle</div>
+    </div>
+    {% endfor %}
+  </section>
+  {% if r.relationship_rate < r.components.ftp %}
+  <p class="hint">Note: the relationship-adjusted rate is below the FTP base rate. The existing relationship
+    is profitable enough to subsidise the new loan; the rate is shown unfloored.</p>
+  {% endif %}
+
+  {# ---------- Components ---------- #}
+  <section class="two-col">
+    <div>
+      <h2>Standalone required rate build-up</h2>
+      {% set c = r.components %}
+      <table>
+        <thead><tr><th>Component</th><th class="num">bp</th><th class="num">%</th></tr></thead>
+        <tbody>
+          <tr><td>FTP base rate
+            <div class="hint">{% if d.rate_type == 'floating' %}SOFR {{ r.sofr|pct }} + {{ cfg.funding_spread_bps }} bp funding spread{% elif d.amortization == 'bullet' %}Funding curve at the {{ d.term_months }}-month maturity{% else %}Funding curve, weighted by principal &times; time{% endif %}</div>
+          </td><td class="num">{{ c.ftp|bp }}</td><td class="num">{{ c.ftp|pct }}</td></tr>
+          <tr><td>Liquidity premium
+            <div class="hint">Term grid at {{ d.term_months }} months</div>
+          </td><td class="num">{{ c.liquidity|bp }}</td><td class="num">{{ c.liquidity|pct }}</td></tr>
+          <tr><td>Prepayment option cost
+            <div class="hint">{% if d.rate_type == 'floating' %}None: the rate reprices{% elif d.prepay_penalty %}None: prepayment penalty applies{% else %}{{ r.cpr|pct }} CPR &times; expected rate fall &times; remaining life{% endif %}</div>
+          </td><td class="num">{{ c.option|bp }}</td><td class="num">{{ c.option|pct }}</td></tr>
+          <tr><td>Expected loss
+            <div class="hint">{{ cfg.pd_by_risk_grade[d.risk_grade]|pct }} PD &times; {{ cfg.lgd_by_collateral[d.collateral_type]|pct }} LGD</div>
+          </td><td class="num">{{ c.expected_loss|bp }}</td><td class="num">{{ c.expected_loss|pct }}</td></tr>
+          <tr><td>Operating expense
+            <div class="hint">Flat rate on balance</div>
+          </td><td class="num">{{ c.opex|bp }}</td><td class="num">{{ c.opex|pct }}</td></tr>
+          <tr><td>Capital charge
+            <div class="hint">{{ '%g'|format(c.k * 100) }}% capital &times; ({{ '%g'|format(cfg.hurdle_roe * 100) }}% hurdle &divide; (1 &minus; {{ '%g'|format(cfg.tax_rate * 100) }}% tax) &minus; {{ c.ftp|pct }} FTP)</div>
+          </td><td class="num">{{ c.capital_charge|bp }}</td><td class="num">{{ c.capital_charge|pct }}</td></tr>
+          <tr><td>Upfront fee credit
+            <div class="hint">{{ d.upfront_fee|money }} &divide; {{ '%g'|format((d.term_months / 12)|round(2)) }} yrs &divide; {{ d.balance|money }}</div>
+          </td><td class="num">&minus;{{ c.fee_credit|bp }}</td><td class="num">&minus;{{ c.fee_credit|pct }}</td></tr>
+          {% if d.rate_floor %}<tr><td>Rate floor credit
+            <div class="hint">Time value of the {{ d.rate_floor|pct }} floor</div>
+          </td><td class="num">&minus;{{ c.floor_credit|bp }}</td><td class="num">&minus;{{ c.floor_credit|pct }}</td></tr>{% endif %}
+        </tbody>
+        <tfoot><tr><th>Required rate</th><th class="num">{{ c.required_rate|bp }}</th><th class="num">{{ c.required_rate|pct }}</th></tr></tfoot>
+      </table>
+    </div>
+    <div>
+      <h2>Components (bp)</h2>
+      <div class="chart-box"><canvas id="components-chart" aria-label="Bar chart of the required rate components in basis points; values are in the table" role="img"></canvas></div>
+    </div>
+  </section>
+
+  {# ---------- Relationship ---------- #}
+  <h2>Relationship view <span class="hint">(year-1, annualized on current balances)</span></h2>
+  <p class="hint">{{ counts.loans }} existing loan(s), {{ counts.deposits }} deposit account(s), {{ counts.fees }} fee line(s). New deal shown at the offered rate.</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th></th><th class="num">Balance</th><th class="num">Pre-tax income</th><th class="num">After-tax income</th><th class="num">Equity</th><th class="num">ROE</th></tr></thead>
+    <tbody>
+      {% for row in r.relationship_table %}
+      <tr class="{{ 'total' if row.label == 'Total' else '' }}">
+        <td>{{ row.label }}</td>
+        <td class="num">{{ row.balance|money if row.balance is not none else '' }}</td>
+        <td class="num">{{ row.pretax|money }}</td>
+        <td class="num">{{ row.after_tax|money }}</td>
+        <td class="num">{{ row.capital|money }}</td>
+        <td class="num">{{ row.roe|pct if row.roe is not none else '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  {% if r.loan_rows or r.deposit_rows %}
+  <details>
+    <summary>Line-by-line detail</summary>
+    {% if r.loan_rows %}
+    <h3>Existing loans <span class="hint">(fixed-rate FTP locked at the origination-month curve)</span></h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Loan</th><th>Type</th><th class="num">Balance</th><th class="num">Rate</th><th>Originated</th>
+        <th class="num">FTP</th><th class="num">Option</th><th class="num">Pre-tax income</th><th class="num">ROE</th></tr></thead>
+      <tbody>
+        {% for l in r.loan_rows %}
+        <tr>
+          <td>{{ l.loan_id }}</td><td>{{ l.loan_type }} {{ l.rate_type }}</td>
+          <td class="num">{{ l.balance|money }}</td><td class="num">{{ l.rate|pct }}</td>
+          <td>{{ l.origination_date or '' }}</td>
+          <td class="num">{{ l.ftp|pct }}{% if l.rate_type == 'floating' %} <span class="hint">SOFR</span>{% elif l.curve_month %} <span class="hint">{{ l.curve_month }} curve</span>{% else %} <span class="hint">today</span>{% endif %}</td>
+          <td class="num">{{ l.option|bp }} bp</td>
+          <td class="num">{{ l.pretax|money }}</td><td class="num">{{ l.roe|pct }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+    {% if r.deposit_rows %}
+    <h3>Deposits <span class="hint">(FTP credit blends the stable share at its assumed life with the volatile share at 1 month)</span></h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Account</th><th>Type</th><th class="num">Avg balance</th><th class="num">Stable share</th>
+        <th class="num">FTP credit</th><th class="num">Rate paid</th><th class="num">ECR</th><th class="num">Pre-tax income</th></tr></thead>
+      <tbody>
+        {% for dep in r.deposit_rows %}
+        <tr>
+          <td>{{ dep.account_id }}</td><td>{{ dep.account_type }}</td>
+          <td class="num">{{ dep.balance|money }}</td><td class="num">{{ '%.0f%%'|format(dep.stable_share * 100) }}</td>
+          <td class="num">{{ dep.ftp_credit|pct }}</td><td class="num">{{ dep.rate_paid|pct }}</td>
+          <td class="num">{{ dep.ecr_rate|pct }}</td><td class="num">{{ dep.pretax|money }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+  </details>
+  {% endif %}
+
+  {# ---------- Curve ---------- #}
+  <h2>Funding curve used</h2>
+  <p class="hint">Treasury constant-maturity yields from FRED as of {{ market.as_of }}, plus a
+    {{ cfg.funding_spread_bps }} bp funding spread. SOFR {{ market.sofr|pct }} as of {{ market.sofr_date }}. Prime {{ market.prime|pct }} as of {{ market.prime_date }}.</p>
+  <div class="table-wrap">
+  <table class="curve">
+    <thead><tr><th>Tenor</th><th>FRED series</th><th class="num">Treasury</th><th class="num">Funding rate</th></tr></thead>
+    <tbody>
+      {% for p in curve_rows %}
+      <tr><td>{{ p.tenor|tenor }}</td><td>{{ p.series }}</td><td class="num">{{ p.treasury|pct }}</td><td class="num">{{ p.funding|pct }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  <p class="no-print"><a href="/">&larr; Price another deal</a> &middot; Use your browser's Print to save a one-page PDF.</p>
+</main>
+
+<script type="application/json" id="chart-data">{{ chart|tojson }}</script>
+<script src="{{ url_for('static', path='results.js') }}"></script>
+</body>
+</html>
